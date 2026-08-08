@@ -8,7 +8,8 @@ const supabase = createBrowserClient(
   process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY!
 );
 
-const TOTAL_STORAGE = 5 * 1024 * 1024 * 1024; // 5 GB
+// Supabase Free Storage quota
+const TOTAL_STORAGE = 1 * 1024 * 1024 * 1024;
 
 export default function StorageUsage() {
   const [used, setUsed] = useState(0);
@@ -55,8 +56,9 @@ export default function StorageUsage() {
 
     const units = ["B", "KB", "MB", "GB", "TB"];
 
-    const index = Math.floor(
-      Math.log(bytes) / Math.log(1024)
+    const index = Math.min(
+      Math.floor(Math.log(bytes) / Math.log(1024)),
+      units.length - 1
     );
 
     return `${(bytes / Math.pow(1024, index)).toFixed(2)} ${
@@ -96,7 +98,7 @@ export default function StorageUsage() {
           </p>
 
           <p className="mt-1 text-sm text-white/30">
-            of 5 GB used
+            of 1 GB used
           </p>
         </div>
 
@@ -112,29 +114,23 @@ export default function StorageUsage() {
 
       </div>
 
-      {/* Progress bar */}
-
       <div className="mt-6 h-2 overflow-hidden rounded-full bg-white/10">
-
         <div
           className="h-full rounded-full bg-white transition-all duration-500"
           style={{
             width: `${percentage}%`,
           }}
         />
-
       </div>
 
       <div className="mt-3 flex justify-between text-xs text-white/30">
-
         <span>
           {percentage.toFixed(1)}% used
         </span>
 
         <span>
-          5 GB total
+          1 GB total
         </span>
-
       </div>
 
     </div>
