@@ -1,29 +1,15 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useState,
+} from "react";
 import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase";
 
 const BUCKET = "my-files";
-
-/*
- * Supabase Storage quotas:
- *
- * Free      = 1 GB
- * Pro       = 100 GB
- * Team      = 100 GB
- * Enterprise = Custom
- *
- * The browser cannot safely read your Supabase billing plan.
- *
- * For your current project we use FREE by default.
- *
- * If you later upgrade, change:
- *
- * NEXT_PUBLIC_SUPABASE_PLAN=pro
- *
- * in your .env.local file.
- */
 
 const SUPABASE_PLAN =
   process.env.NEXT_PUBLIC_SUPABASE_PLAN || "free";
@@ -62,12 +48,12 @@ type UploadFile = File & {
 export default function FilesPage() {
   const router = useRouter();
 
+  const [userId, setUserId] = useState("");
   const [items, setItems] = useState<StorageItem[]>([]);
   const [currentPath, setCurrentPath] = useState("");
 
   const [loading, setLoading] = useState(true);
   const [uploading, setUploading] = useState(false);
-
   const [progress, setProgress] = useState(0);
 
   const [error, setError] = useState("");
@@ -75,10 +61,6 @@ export default function FilesPage() {
 
   const [storageUsed, setStorageUsed] = useState(0);
   const [storageLoading, setStorageLoading] = useState(true);
-
-  // ============================================================
-  // STORAGE QUOTA
-  // ============================================================
 
   const storageLimit =
     STORAGE_LIMITS[SUPABASE_PLAN] ||
@@ -97,49 +79,84 @@ export default function FilesPage() {
       return "0 Bytes";
     }
 
-    const units = ["Bytes", "KB", "MB", "GB", "TB"];
+    const units = [
+      "Bytes",
+      "KB",
+      "MB",
+      "GB",
+      "TB",
+    ];
 
     const index = Math.min(
       Math.floor(Math.log(bytes) / Math.log(1024)),
       units.length - 1
     );
 
-    return `${(bytes / Math.pow(1024, index)).toFixed(
-      index === 0 ? 0 : 2
-    )} ${units[index]}`;
+    return `${(
+      bytes / Math.pow(1024, index)
+    ).toFixed(index === 0 ? 0 : 2)} ${units[index]}`;
   };
 
   // ============================================================
-  // GET TOTAL STORAGE USAGE
+  // USER ROOT
+  // ============================================================
+
+  const getUserRoot = useCallback(
+    (path = "") => {
+      if (!userId) {
+        return "";
+      }
+
+      return path
+        ? `${userId}/${path}`
+        : userId;
+    },
+    [userId]
+  );
+
+  // ============================================================
+  // CLEAR MESSAGES
+  // ============================================================
+
+  const clearMessages = () => {
+    setError("");
+    setMessage("");
+  };
+
+  // ============================================================
+  // STORAGE USAGE
   // ============================================================
 
   const calculateStorageUsage = useCallback(
-    async (folderPath = ""): Promise<number> => {
+    async (folderPath: string): Promise<number> => {
       let total = 0;
 
-      const { data, error } = await supabase.storage
-        .from(BUCKET)
-        .list(folderPath, {
-          limit: 1000,
-          offset: 0,
-        });
+      const { data, error } =
+        await supabase.storage
+          .from(BUCKET)
+          .list(folderPath, {
+            limit: 1000,
+            offset: 0,
+          });
 
       if (error) {
         throw error;
       }
 
-      for (const item of (data || []) as StorageItem[]) {
+      for (const item of (data ||
+        []) as StorageItem[]) {
         const itemPath = folderPath
           ? `${folderPath}/${item.name}`
           : item.name;
 
-        /*
-         * Supabase folders have no file ID.
-         */
         if (item.id === null) {
-          total += await calculateStorageUsage(itemPath);
+          total += await calculateStorageUsage(
+            itemPath
+          );
         } else {
-          total += Number(item.metadata?.size || 0);
+          total += Number(
+            item.metadata?.size || 0
+          );
         }
       }
 
@@ -148,31 +165,30 @@ export default function FilesPage() {
     []
   );
 
-  const loadStorageUsage = useCallback(async () => {
-    setStorageLoading(true);
-
-    try {
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
-
-      if (!user) {
-        router.replace("/login");
+  const loadStorageUsage = useCallback(
+    async () => {
+      if (!userId) {
         return;
       }
 
-      const total = await calculateStorageUsage();
+      setStorageLoading(true);
 
-      setStorageUsed(total);
-    } catch (err) {
-      console.error(
-        "Storage usage calculation error:",
-        err
-      );
-    } finally {
-      setStorageLoading(false);
-    }
-  }, [calculateStorageUsage, router]);
+      try {
+        const total =
+          await calculateStorageUsage(userId);
+
+        setStorageUsed(total);
+      } catch (err) {
+        console.error(
+          "Storage usage calculation error:",
+          err
+        );
+      } finally {
+        setStorageLoading(false);
+      }
+    },
+    [calculateStorageUsage, userId]
+  );
 
   // ============================================================
   // STORAGE CALCULATIONS
@@ -189,76 +205,111 @@ export default function FilesPage() {
   );
 
   // ============================================================
+  // LOAD USER
+  // ============================================================
+
+  const loadUser = useCallback(async () => {
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+
+    if (!user) {
+      router.replace("/login");
+      return;
+    }
+
+    setUserId(user.id);
+  }, [router]);
+
+  // ============================================================
   // LOAD CURRENT FOLDER
   // ============================================================
 
   const loadFiles = useCallback(async () => {
+    if (!userId) {
+      return;
+    }
+
     setLoading(true);
     setError("");
 
     try {
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
+      const storagePath =
+        getUserRoot(currentPath);
 
-      if (!user) {
-        router.replace("/login");
-        return;
-      }
-
-      const { data, error } = await supabase.storage
-        .from(BUCKET)
-        .list(currentPath, {
-          limit: 1000,
-          offset: 0,
-          sortBy: {
-            column: "name",
-            order: "asc",
-          },
-        });
+      const { data, error } =
+        await supabase.storage
+          .from(BUCKET)
+          .list(storagePath, {
+            limit: 1000,
+            offset: 0,
+            sortBy: {
+              column: "name",
+              order: "asc",
+            },
+          });
 
       if (error) {
         throw error;
       }
 
-      setItems((data || []) as StorageItem[]);
+      setItems(
+        (data || []) as StorageItem[]
+      );
     } catch (err: any) {
-      console.error("Load files error:", err);
+      console.error(
+        "Load files error:",
+        err
+      );
 
       setError(
-        err?.message || "Unable to load files."
+        err?.message ||
+          "Unable to load files."
       );
     } finally {
       setLoading(false);
     }
-  }, [currentPath, router]);
+  }, [
+    currentPath,
+    getUserRoot,
+    userId,
+  ]);
 
   // ============================================================
   // INITIAL LOAD
   // ============================================================
 
   useEffect(() => {
-    loadFiles();
-  }, [loadFiles]);
+    loadUser();
+  }, [loadUser]);
 
   useEffect(() => {
+    if (!userId) {
+      return;
+    }
+
+    loadFiles();
     loadStorageUsage();
-  }, [loadStorageUsage]);
+  }, [
+    userId,
+    currentPath,
+    loadFiles,
+    loadStorageUsage,
+  ]);
 
   // ============================================================
   // HELPERS
   // ============================================================
 
-  const clearMessages = () => {
-    setError("");
-    setMessage("");
-  };
-
-  const isFolder = (item: StorageItem) => {
+  const isFolder = (
+    item: StorageItem
+  ) => {
     return item.id === null;
   };
 
-  const getFullPath = (name: string) => {
+  const getFullPath = (
+    name: string
+  ) => {
     return currentPath
       ? `${currentPath}/${name}`
       : name;
@@ -273,12 +324,17 @@ export default function FilesPage() {
       return [];
     }
 
-    const parts = currentPath.split("/");
+    const parts =
+      currentPath.split("/");
 
-    return parts.map((part, index) => ({
-      name: part,
-      path: parts.slice(0, index + 1).join("/"),
-    }));
+    return parts.map(
+      (part, index) => ({
+        name: part,
+        path: parts
+          .slice(0, index + 1)
+          .join("/"),
+      })
+    );
   }, [currentPath]);
 
   // ============================================================
@@ -288,64 +344,51 @@ export default function FilesPage() {
   const uploadFiles = async (
     fileList: FileList | File[]
   ) => {
-    const files = Array.from(fileList) as UploadFile[];
+    const files =
+      Array.from(fileList) as UploadFile[];
 
-    if (!files.length) {
+    if (!files.length || !userId) {
       return;
     }
 
     clearMessages();
-
     setUploading(true);
     setProgress(0);
 
     try {
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
-
-      if (!user) {
-        router.replace("/login");
-        return;
-      }
-
       let completed = 0;
 
       for (const file of files) {
-        /*
-         * Folder upload:
-         *
-         * webkitRelativePath:
-         *
-         * Photos/2026/trip.jpg
-         *
-         * Normal file:
-         *
-         * trip.jpg
-         */
-
         let relativePath =
           file.webkitRelativePath ||
           file.name;
 
-        relativePath = relativePath.replace(
-          /^\/+/,
-          ""
-        );
+        relativePath =
+          relativePath.replace(
+            /^\/+/,
+            ""
+          );
 
-        const storagePath = currentPath
-          ? `${currentPath}/${relativePath}`
-          : relativePath;
+        const userFolder =
+          getUserRoot(currentPath);
 
-        const { error } = await supabase.storage
-          .from(BUCKET)
-          .upload(storagePath, file, {
-            cacheControl: "3600",
-            upsert: true,
-            contentType:
-              file.type ||
-              "application/octet-stream",
-          });
+        const storagePath =
+          `${userFolder}/${relativePath}`;
+
+        const { error } =
+          await supabase.storage
+            .from(BUCKET)
+            .upload(
+              storagePath,
+              file,
+              {
+                cacheControl: "3600",
+                upsert: true,
+                contentType:
+                  file.type ||
+                  "application/octet-stream",
+              }
+            );
 
         if (error) {
           throw error;
@@ -355,7 +398,9 @@ export default function FilesPage() {
 
         setProgress(
           Math.round(
-            (completed / files.length) * 100
+            (completed /
+              files.length) *
+              100
           )
         );
       }
@@ -371,10 +416,14 @@ export default function FilesPage() {
       await loadFiles();
       await loadStorageUsage();
     } catch (err: any) {
-      console.error("Upload error:", err);
+      console.error(
+        "Upload error:",
+        err
+      );
 
       setError(
-        err?.message || "Upload failed."
+        err?.message ||
+          "Upload failed."
       );
     } finally {
       setUploading(false);
@@ -389,9 +438,10 @@ export default function FilesPage() {
   const handleFileUpload = async (
     event: React.ChangeEvent<HTMLInputElement>
   ) => {
-    const files = event.target.files;
+    const files =
+      event.target.files;
 
-    if (!files || files.length === 0) {
+    if (!files || !files.length) {
       return;
     }
 
@@ -407,9 +457,10 @@ export default function FilesPage() {
   const handleFolderUpload = async (
     event: React.ChangeEvent<HTMLInputElement>
   ) => {
-    const files = event.target.files;
+    const files =
+      event.target.files;
 
-    if (!files || files.length === 0) {
+    if (!files || !files.length) {
       return;
     }
 
@@ -422,7 +473,9 @@ export default function FilesPage() {
   // OPEN FOLDER
   // ============================================================
 
-  const openFolder = (folderName: string) => {
+  const openFolder = (
+    folderName: string
+  ) => {
     clearMessages();
 
     setCurrentPath(
@@ -436,7 +489,9 @@ export default function FilesPage() {
   // GO TO PATH
   // ============================================================
 
-  const goToPath = (path: string) => {
+  const goToPath = (
+    path: string
+  ) => {
     clearMessages();
     setCurrentPath(path);
   };
@@ -450,11 +505,14 @@ export default function FilesPage() {
       return;
     }
 
-    const parts = currentPath.split("/");
+    const parts =
+      currentPath.split("/");
 
     parts.pop();
 
-    setCurrentPath(parts.join("/"));
+    setCurrentPath(
+      parts.join("/")
+    );
   };
 
   // ============================================================
@@ -467,13 +525,17 @@ export default function FilesPage() {
     clearMessages();
 
     try {
-      const path = getFullPath(file.name);
+      const path =
+        getFullPath(file.name);
+
+      const storagePath =
+        getUserRoot(path);
 
       const { data, error } =
         await supabase.storage
           .from(BUCKET)
           .createSignedUrl(
-            path,
+            storagePath,
             60 * 60
           );
 
@@ -512,13 +574,17 @@ export default function FilesPage() {
     clearMessages();
 
     try {
-      const path = getFullPath(file.name);
+      const path =
+        getFullPath(file.name);
+
+      const storagePath =
+        getUserRoot(path);
 
       const { data, error } =
         await supabase.storage
           .from(BUCKET)
           .createSignedUrl(
-            path,
+            storagePath,
             60 * 60
           );
 
@@ -535,13 +601,20 @@ export default function FilesPage() {
       const link =
         document.createElement("a");
 
-      link.href = data.signedUrl;
+      link.href =
+        data.signedUrl;
+
       link.target = "_blank";
+
       link.rel =
         "noopener noreferrer";
-      link.download = file.name;
 
-      document.body.appendChild(link);
+      link.download =
+        file.name;
+
+      document.body.appendChild(
+        link
+      );
 
       link.click();
 
@@ -578,10 +651,15 @@ export default function FilesPage() {
       const path =
         getFullPath(file.name);
 
+      const storagePath =
+        getUserRoot(path);
+
       const { error } =
         await supabase.storage
           .from(BUCKET)
-          .remove([path]);
+          .remove([
+            storagePath,
+          ]);
 
       if (error) {
         throw error;
@@ -661,11 +739,16 @@ export default function FilesPage() {
     clearMessages();
 
     try {
-      const folderPath =
+      const relativePath =
         getFullPath(folder.name);
 
+      const folderPath =
+        getUserRoot(relativePath);
+
       const files =
-        await getAllFiles(folderPath);
+        await getAllFiles(
+          folderPath
+        );
 
       if (files.length > 0) {
         const { error } =
@@ -695,17 +778,18 @@ export default function FilesPage() {
   };
 
   // ============================================================
-  // REFRESH EVERYTHING
+  // REFRESH
   // ============================================================
 
-  const refreshEverything = async () => {
-    clearMessages();
+  const refreshEverything =
+    async () => {
+      clearMessages();
 
-    await Promise.all([
-      loadFiles(),
-      loadStorageUsage(),
-    ]);
-  };
+      await Promise.all([
+        loadFiles(),
+        loadStorageUsage(),
+      ]);
+    };
 
   // ============================================================
   // RENDER
@@ -713,15 +797,15 @@ export default function FilesPage() {
 
   return (
     <main className="min-h-screen bg-black text-white">
+
       <div className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
 
-        {/* ================================================== */}
         {/* HEADER */}
-        {/* ================================================== */}
 
         <div className="mb-8 flex flex-col gap-5 lg:flex-row lg:items-center lg:justify-between">
 
           <div>
+
             <button
               onClick={() =>
                 router.push("/dashboard")
@@ -736,8 +820,9 @@ export default function FilesPage() {
             </h1>
 
             <p className="mt-2 text-gray-400">
-              Store and organize your digital space.
+              Store and organize your private digital space.
             </p>
+
           </div>
 
           {/* UPLOAD BUTTONS */}
@@ -747,6 +832,7 @@ export default function FilesPage() {
             {/* FILE UPLOAD */}
 
             <label className="cursor-pointer">
+
               <input
                 type="file"
                 multiple
@@ -759,11 +845,13 @@ export default function FilesPage() {
               <div className="rounded-2xl bg-white px-5 py-3 font-semibold text-black shadow-lg transition hover:bg-gray-200">
                 📄 Upload Files
               </div>
+
             </label>
 
             {/* FOLDER UPLOAD */}
 
             <label className="cursor-pointer">
+
               <input
                 type="file"
                 multiple
@@ -779,6 +867,7 @@ export default function FilesPage() {
               <div className="rounded-2xl border border-white/20 bg-white/10 px-5 py-3 font-semibold text-white shadow-lg transition hover:bg-white/20">
                 📁 Upload Folder
               </div>
+
             </label>
 
             {/* REFRESH */}
@@ -796,18 +885,16 @@ export default function FilesPage() {
             >
               ↻
             </button>
+
           </div>
+
         </div>
 
-        {/* ================================================== */}
         {/* STORAGE CARD */}
-        {/* ================================================== */}
 
         <section className="mb-7 overflow-hidden rounded-3xl border border-white/10 bg-white/[0.04] p-6 shadow-2xl backdrop-blur-xl">
 
           <div className="flex flex-col gap-6 lg:flex-row lg:items-center lg:justify-between">
-
-            {/* LEFT */}
 
             <div className="flex items-start gap-4">
 
@@ -816,6 +903,7 @@ export default function FilesPage() {
               </div>
 
               <div>
+
                 <div className="flex flex-wrap items-center gap-3">
 
                   <h2 className="text-lg font-semibold">
@@ -830,25 +918,33 @@ export default function FilesPage() {
 
                 {storageLoading ? (
                   <p className="mt-2 text-sm text-gray-500">
-                    Calculating storage usage...
+                    Calculating your storage usage...
                   </p>
                 ) : (
                   <p className="mt-2 text-sm text-gray-400">
-                    {formatBytes(storageUsed)} used of{" "}
-                    {formatBytes(storageLimit)}
+                    {formatBytes(
+                      storageUsed
+                    )}{" "}
+                    used of{" "}
+                    {formatBytes(
+                      storageLimit
+                    )}
                   </p>
                 )}
-              </div>
-            </div>
 
-            {/* RIGHT */}
+              </div>
+
+            </div>
 
             <div className="lg:text-right">
 
               {!storageLoading && (
                 <>
                   <p className="text-3xl font-bold">
-                    {storagePercentage.toFixed(1)}%
+                    {storagePercentage.toFixed(
+                      1
+                    )}
+                    %
                   </p>
 
                   <p className="mt-1 text-sm text-gray-500">
@@ -861,6 +957,7 @@ export default function FilesPage() {
               )}
 
             </div>
+
           </div>
 
           {/* PROGRESS BAR */}
@@ -874,9 +971,11 @@ export default function FilesPage() {
               ) : (
                 <div
                   className={`h-full rounded-full transition-all duration-500 ${
-                    storagePercentage >= 90
+                    storagePercentage >=
+                    90
                       ? "bg-red-500"
-                      : storagePercentage >= 75
+                      : storagePercentage >=
+                        75
                       ? "bg-yellow-400"
                       : "bg-white"
                   }`}
@@ -889,10 +988,17 @@ export default function FilesPage() {
             </div>
 
             <div className="mt-3 flex justify-between text-xs text-gray-600">
-              <span>0 GB</span>
+
               <span>
-                {formatBytes(storageLimit)}
+                0 GB
               </span>
+
+              <span>
+                {formatBytes(
+                  storageLimit
+                )}
+              </span>
+
             </div>
 
           </div>
@@ -900,7 +1006,8 @@ export default function FilesPage() {
           {/* WARNING */}
 
           {!storageLoading &&
-            storagePercentage >= 90 && (
+            storagePercentage >=
+              90 && (
               <div className="mt-5 rounded-2xl border border-red-500/20 bg-red-500/10 px-4 py-3 text-sm text-red-300">
                 ⚠️ Your storage is almost full.
                 Consider deleting unused files
@@ -910,9 +1017,7 @@ export default function FilesPage() {
 
         </section>
 
-        {/* ================================================== */}
         {/* UPLOAD PROGRESS */}
-        {/* ================================================== */}
 
         {uploading && (
           <div className="mb-6 rounded-2xl border border-white/10 bg-white/5 p-5 backdrop-blur-xl">
@@ -943,9 +1048,7 @@ export default function FilesPage() {
           </div>
         )}
 
-        {/* ================================================== */}
         {/* SUCCESS */}
-        {/* ================================================== */}
 
         {message && (
           <div className="mb-6 rounded-2xl border border-green-500/20 bg-green-500/10 p-4 text-sm text-green-300">
@@ -953,9 +1056,7 @@ export default function FilesPage() {
           </div>
         )}
 
-        {/* ================================================== */}
         {/* ERROR */}
-        {/* ================================================== */}
 
         {error && (
           <div className="mb-6 rounded-2xl border border-red-500/20 bg-red-500/10 p-4 text-sm text-red-300">
@@ -963,9 +1064,7 @@ export default function FilesPage() {
           </div>
         )}
 
-        {/* ================================================== */}
         {/* BREADCRUMB */}
-        {/* ================================================== */}
 
         <div className="mb-5 flex flex-wrap items-center gap-2 rounded-2xl border border-white/10 bg-white/5 p-3 backdrop-blur-xl">
 
@@ -988,6 +1087,7 @@ export default function FilesPage() {
                 key={crumb.path}
                 className="flex items-center gap-2"
               >
+
                 <span className="text-gray-600">
                   /
                 </span>
@@ -1002,15 +1102,14 @@ export default function FilesPage() {
                 >
                   {crumb.name}
                 </button>
+
               </div>
             )
           )}
 
         </div>
 
-        {/* ================================================== */}
         {/* BACK */}
-        {/* ================================================== */}
 
         {currentPath && (
           <button
@@ -1021,9 +1120,7 @@ export default function FilesPage() {
           </button>
         )}
 
-        {/* ================================================== */}
         {/* FILE AREA */}
-        {/* ================================================== */}
 
         <section className="overflow-hidden rounded-3xl border border-white/10 bg-white/[0.03] shadow-2xl backdrop-blur-xl">
 
@@ -1056,8 +1153,8 @@ export default function FilesPage() {
               </h2>
 
               <p className="mt-2 max-w-md text-sm text-gray-400">
-                Upload files or an entire
-                folder to start building your
+                Upload files or an entire folder
+                to start building your private
                 digital space.
               </p>
 
@@ -1165,8 +1262,8 @@ export default function FilesPage() {
                       <div className="flex flex-wrap items-center gap-2">
 
                         {folder ? (
-
                           <>
+
                             <button
                               onClick={() =>
                                 openFolder(
@@ -1188,10 +1285,9 @@ export default function FilesPage() {
                             >
                               Delete
                             </button>
+
                           </>
-
                         ) : (
-
                           <>
 
                             <span className="px-2 py-2 text-xs text-gray-500">
@@ -1237,7 +1333,6 @@ export default function FilesPage() {
                             </button>
 
                           </>
-
                         )}
 
                       </div>
@@ -1253,9 +1348,7 @@ export default function FilesPage() {
 
         </section>
 
-        {/* ================================================== */}
         {/* FOOTER INFO */}
-        {/* ================================================== */}
 
         <div className="mt-5 flex flex-col gap-2 text-xs text-gray-500 sm:flex-row sm:items-center sm:justify-between">
 
@@ -1271,12 +1364,14 @@ export default function FilesPage() {
             {planName} •{" "}
             {formatBytes(
               storageLimit
-            )} storage quota
+            )}{" "}
+            storage quota
           </span>
 
         </div>
 
       </div>
+
     </main>
   );
 }
