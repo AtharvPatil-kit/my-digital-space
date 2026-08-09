@@ -1,13 +1,15 @@
+import Link from "next/link";
+
 export default function PhotosPage() {
   return (
     <main className="min-h-screen bg-[#050505] px-6 py-10 text-white lg:px-10">
       <div className="mx-auto max-w-6xl">
-        <a
+        <Link
           href="/"
           className="text-sm text-white/40 transition hover:text-white"
         >
           ← Back home
-        </a>
+        </Link>
 
         <div className="mt-20">
           <p className="text-xs uppercase tracking-[0.25em] text-white/30">

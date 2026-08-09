@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import Image from "next/image";
 import { createBrowserClient } from "@supabase/ssr";
 
 const supabase = createBrowserClient(
@@ -67,12 +68,10 @@ export default function FileList() {
   }
 
   useEffect(() => {
-    loadFiles();
+    (async () => {
+      await loadFiles();
+    })();
   }, []);
-
-  function getFilePath(fileName: string) {
-    return `${files.length >= 0 ? "" : ""}`;
-  }
 
   function isImage(file: StorageFile) {
     return file.metadata?.mimetype?.startsWith("image/");
@@ -370,10 +369,12 @@ function ImagePreview({
   }
 
   return (
-    <img
+    <Image
       src={url}
       alt=""
-      className="h-full w-full object-cover"
+      width={64}
+      height={64}
+      className="object-cover"
     />
   );
 }

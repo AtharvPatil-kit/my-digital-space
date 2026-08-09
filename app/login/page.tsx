@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import Link from "next/link";
 import { supabase } from "@/lib/supabase";
 import { useRouter } from "next/navigation";
 
@@ -104,12 +105,12 @@ export default function LoginPage() {
                   Password
                 </label>
 
-                <a
+                <Link
                   href="/forgot-password"
                   className="text-xs text-white/40 transition hover:text-white"
                 >
                   Forgot password?
-                </a>
+                </Link>
               </div>
 
               <input
@@ -170,15 +171,15 @@ export default function LoginPage() {
           {/* Signup */}
           <div className="mt-8 border-t border-white/10 pt-6 text-center">
             <p className="text-sm text-white/30">
-              Don't have an account?
+              Don&apos;t have an account?
             </p>
 
-            <a
+            <Link
               href="/signup"
               className="mt-2 inline-block text-sm text-white/70 transition hover:text-white"
             >
               Create an account →
-            </a>
+            </Link>
           </div>
 
         </div>

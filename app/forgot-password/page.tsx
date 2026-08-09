@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import Link from "next/link";
 import { supabase } from "@/lib/supabase";
 
 export default function ForgotPasswordPage() {
@@ -56,7 +57,7 @@ export default function ForgotPasswordPage() {
             </h1>
 
             <p className="mt-3 text-sm leading-6 text-white/40">
-              Enter your email and we'll send you a
+              Enter your email and we&apos;ll send you a
               password reset link.
             </p>
 
@@ -116,12 +117,12 @@ export default function ForgotPasswordPage() {
 
           <div className="mt-8 text-center">
 
-            <a
+            <Link
               href="/login"
               className="text-sm text-white/40 transition hover:text-white"
             >
               ← Back to login
-            </a>
+            </Link>
 
           </div>
 

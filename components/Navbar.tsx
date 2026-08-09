@@ -13,7 +13,7 @@ export default function Navbar() {
           href="/dashboard"
           className="text-lg font-semibold tracking-tight"
         >
-          My Digital Space
+          ~Atharv
         </Link>
 
         {/* Navigation */}
